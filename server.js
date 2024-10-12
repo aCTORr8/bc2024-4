@@ -2,6 +2,7 @@ const http = require('http');
 const { Command } = require('commander');
 const fs = require('fs').promises;
 const path = require('path');
+const superagent = require('superagent');
 
 const program = new Command();
 
@@ -26,9 +27,22 @@ const server = http.createServer(async (req, res) => {
       console.log(`Served cached image for HTTP code: ${urlPath}`);
     } catch (error) {
       if (error.code === 'ENOENT') {
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
-        res.end('Image not found in cache');
-        console.log(`Image for HTTP code ${urlPath} not found in cache`);
+        // Якщо картинка не знайдена, робимо запит на http.cat
+        try {
+          const response = await superagent.get(`https://http.cat/${urlPath}`);
+          const imageData = response.body;
+
+          // Зберігаємо отриману картинку у кеш
+          await fs.writeFile(filePath, imageData);
+          res.writeHead(200, { 'Content-Type': 'image/jpeg' });
+          res.end(imageData);
+          console.log(`Fetched and cached image for HTTP code ${urlPath} from http.cat`);
+        } catch (fetchError) {
+          // Якщо виникла помилка при запиті до http.cat
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('Image not found on http.cat');
+          console.log(`Failed to fetch image for HTTP code ${urlPath} from http.cat`);
+        }
       } else {
         res.writeHead(500, { 'Content-Type': 'text/plain' });
         res.end('Server error');
